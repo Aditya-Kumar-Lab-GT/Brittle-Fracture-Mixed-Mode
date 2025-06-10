@@ -171,7 +171,7 @@ Once the conversion is complete, run this FEniCS code to perform the
 simulation.
 ===========================================================================
 """
-if problem_type in (1, 3, 5, 6):
+if problem_type in (1, 3, 6):
     # -----------------------------------------------------
     # Mesh Loading
     # -----------------------------------------------------
@@ -313,6 +313,15 @@ elif markBC_choice == 4:                                # Mode_III
     bottom = CompiledSubDomain("x[1]<1e-4")
     outer= CompiledSubDomain("x[1]<7 or x[1]>18", Ly=L)
     crack = CompiledSubDomain("abs(x[1]-.5*Ly)<2*h && x[0]<CrackZ+2*h && x[0]>CrackZ-2*h", Ly=L, CrackZ=CrackZ, h=h)
+
+elif markBC_choice == 5:                                # Biaxial Tension
+    # Mark boundary subdomians
+    left =  CompiledSubDomain("abs(x[0])<1e-4", side = 0, tol=1e-4)
+    right =  CompiledSubDomain("abs(x[0]+x[1]-side)<1e-4", side = W, tol=1e-4)
+    bottom = CompiledSubDomain("x[1]<1e-4 && x[0]>a-1e-4", a=ac)
+    cracktip = CompiledSubDomain("x[1]<1e-4 && x[0]>a-eps*4 && x[0]<a+h ", a=ac, eps=eps, h=h)
+    righttop = CompiledSubDomain("abs(x[1]-W)<1e-4 && abs(x[0]-0)<1e-4 ", W=W)
+    outer= CompiledSubDomain("x[1]>W/10", W=W)
 
 elif markBC_choice == 7:                                # 4-Point Bending
     if notch_angle_choice == 45:
@@ -475,16 +484,19 @@ elif DirichletBC_choice == 4:   # Mode III
     bcs_dz=[bct_dz]
 
 elif DirichletBC_choice == 5:   # Biaxial
-    c = Expression("t*0.0", degree=1, t=0)
-    bc_left = DirichletBC(V.sub(0), c, facets, 23)
-    bc_bot = DirichletBC(V.sub(1), c, facets, 22)
-    bcs = [bc_left, bc_bot]
+    # Define Dirichlet boundary conditions
+    c=Expression("t*0.0",degree=1,t=0)
+    								
+    #bcl= DirichletBC(V.sub(0), Constant(0.0), righttop, method='pointwise'  )
+    bcl = DirichletBC(V.sub(0), c, left)
+    bcb = DirichletBC(V.sub(1), c, bottom)
+    bcs = [bcl, bcb]
     
-    cz = Constant(1.0)
+    cz=Constant(1.0)
     bct_z = DirichletBC(Y, cz, outer)
-    cz2 = Constant(0.0)
+    cz2=Constant(0.0)
     bct_z2 = DirichletBC(Y, cz2, cracktip)
-    bcs_z = []
+    bcs_z=[]
     
     sigma_external = 1.05 * sqrt(E * Gc / np.pi / ac)
     Tf = Expression("t*sigma", degree=1, t=0, sigma=sigma_external)
@@ -502,6 +514,12 @@ elif DirichletBC_choice == 6:   # Pure Shear
     
     sigma_external = 1.1 * sqrt(E * Gc / np.pi / ac)
     Tf = Expression("t*sigma", degree=1, t=0, sigma=sigma_external)
+
+    # marking boundary on which Neumann bc is applied
+    boundary_subdomains = MeshFunction("size_t", mesh, 1)
+    boundary_subdomains.set_all(0)	
+    right.mark(boundary_subdomains,1)	
+    ds = ds(subdomain_data=boundary_subdomains) 
 
 elif DirichletBC_choice == 7:   # 4-P Bending
     cr = Expression(("t*0.0", "t*0.0", "t*0.0"), degree=1, t=0)
@@ -911,7 +929,7 @@ if phase_model == 1:
         Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
-        Pi = psi1*dx - dot(Tf*n, u)*ds(24)
+        Pi = psi1*dx - dot(Tf*n, u)*ds(1)
 
     elif problem_type == 6: 
         Pi = psi1*dx - (dot(-Tf*m, u)*ds(23) + dot(-Tf*m, u)*ds(24) + dot(Tf*m, u)*ds(21) + dot(Tf*m, u)*ds(22))
@@ -1051,7 +1069,7 @@ elif phase_model == 2:
         Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
-        Pi = psi1*dx - dot(Tf*n, u)*ds(24)
+        Pi = psi1*dx - dot(Tf*n, u)*ds(1)
 
     elif problem_type == 6: 
         Pi = psi1*dx - (dot(-Tf*m, u)*ds(23) + dot(-Tf*m, u)*ds(24) + dot(Tf*m, u)*ds(21) + dot(Tf*m, u)*ds(22))
@@ -1173,7 +1191,7 @@ elif phase_model == 3:
         Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
-        Pi = psi1*dx - dot(Tf*n, u)*ds(24)
+        Pi = psi1*dx - dot(Tf*n, u)*ds(1)
 
     elif problem_type == 6: 
         Pi = psi1*dx - (dot(-Tf*m, u)*ds(23) + dot(-Tf*m, u)*ds(24) + dot(Tf*m, u)*ds(21) + dot(Tf*m, u)*ds(22))
@@ -1247,7 +1265,7 @@ elif phase_model == 4:
         Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
-        Pi = psi1*dx - dot(Tf*n, u)*ds(24)
+        Pi = psi1*dx - dot(Tf*n, u)*ds(1)
 
     elif problem_type == 6: 
         Pi = psi1*dx - (dot(-Tf*m, u)*ds(23) + dot(-Tf*m, u)*ds(24) + dot(Tf*m, u)*ds(21) + dot(Tf*m, u)*ds(22))
