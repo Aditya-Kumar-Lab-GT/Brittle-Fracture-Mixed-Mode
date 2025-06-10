@@ -278,8 +278,16 @@ outer = CompiledSubDomain("x[1]>L/10", L=L)
 leftbot = CompiledSubDomain("abs(x[1]+side)<1e-4 && abs(x[0]+side)<1e-4", side=W)
 
 
+if markBC_choice == 4:                                # Mode_III
+    # Mark boundary subdomians
+    left = CompiledSubDomain("x[0]<1e-4")
+    right = CompiledSubDomain("x[0]>Lx-1e-4", Lx=W)
+    top = CompiledSubDomain("x[1]>Ly-1e-4", Ly=L)
+    bottom = CompiledSubDomain("x[1]<1e-4")
+    outer= CompiledSubDomain("x[1]<7 or x[1]>18", Ly=L)
+    crack = CompiledSubDomain("abs(x[1]-.5*Ly)<2*h && x[0]<CrackZ+2*h && x[0]>CrackZ-2*h", Ly=L, CrackZ=CrackZ, h=h)
 
-if markBC_choice == 7:                                # 4-Point Bending
+elif markBC_choice == 7:                                # 4-Point Bending
     if notch_angle_choice == 45:
         left = CompiledSubDomain("abs(x[0]-side)<1e-4", side=-W/2, tol=1e-4)
         right = CompiledSubDomain("abs(x[0]-side)<1e-4", side=W/2, tol=1e-4)
@@ -404,25 +412,35 @@ elif DirichletBC_choice == 3:   # Mode II
     bcs_z = []
 
 elif DirichletBC_choice == 4:   # Mode III
-    r = Expression(("t*0.0", "t*0.0", "t*disp"), degree=1, t=0, disp=disp)
-    r0 = Expression(("t*0.0", "t*0.0", "(t-tau)*disp"), degree=1, t=0, tau=0, disp=disp)
-    c = Expression(("t*0.0", "t*0.0", "t*0.0"), degree=1, t=0)
-    
-    bc_top = DirichletBC(V.sub(2), r, facets, 21)
-    bc_bot = DirichletBC(V.sub(2), c, facets, 22)
-    bcs = [bc_bot, bc_top]
-    
-    bc_top0 = DirichletBC(V.sub(2), r0, facets, 21)
-    bcs_du0 = [bc_top0, bc_bot]
-    
-    bc_top1 = DirichletBC(V.sub(2), c, facets, 21)
-    bcs_du = [bc_top1, bc_bot]
-    
-    cz = Constant(1.0)
-    cz2 = Constant(0.0)
+    r = Expression("t*disp",degree=1,t=0,disp=disp)
+    r0 = Expression("(t-tau)*disp",degree=1,t=0,tau=0, disp=disp)
+
+    # Define Dirichlet boundary conditions
+    c=Expression("0.0",degree=1,t=0)
+                                    
+    bct= DirichletBC(V.sub(2), r, top)
+    bct2= DirichletBC(V.sub(1), c, top)
+    bct3= DirichletBC(V.sub(0), c, top)
+    bcb= DirichletBC(V.sub(0), c, bottom)
+    bcb2= DirichletBC(V.sub(1), c, bottom)
+    bcb3= DirichletBC(V.sub(2), c, bottom)
+    bcs = [bct, bct2, bct3, bcb, bcb2, bcb3]
+
+    bct0= DirichletBC(V.sub(2), r0, top)
+    bcs_du0 = [bct0, bct2, bct3, bcb, bcb2, bcb3]
+
+    bct1= DirichletBC(V.sub(2), c, top)
+    bcs_du = [bct1, bct2, bct3, bcb, bcb2, bcb3]
+
+    cz=Constant(1.0)
+    cz2=Constant(0.0)
     bct_z = DirichletBC(Y, cz, outer)
-    bct_z2 = DirichletBC(Y, cz2, cracktip)
-    bcs_z = [bct_z]
+    bct_z2 = DirichletBC(Y, cz2, crack)
+    bcs_z=[bct_z]
+
+    bct_dz = DirichletBC(Y, Constant(0.0), outer)
+    bct_dz2 = DirichletBC(Y, Constant(0.0), crack)
+    bcs_dz=[bct_dz]
 
 elif DirichletBC_choice == 5:   # Biaxial
     c = Expression("t*0.0", degree=1, t=0)
@@ -608,7 +626,7 @@ elif problem_type == 3:                                                # Mode II
     y_dofs_top = top_dofs[0::d]
 
 elif problem_type == 4:                                                # Mode III
-    top_dofs = extract_dofs_boundary(V, facets, 21)
+    top_dofs=extract_dofs_boundary(V,top)
     y_dofs_top = top_dofs[2::d]
 
 elif problem_type == 5:                                                # Biaxial
