@@ -622,7 +622,7 @@ assign(z_trial,z)
 # ---------------------------
 # Helper function: Extract DOFs on boundary
 # ---------------------------
-if problem_type in (1, 3, 5, 6):
+if problem_type in (1, 3, 6):
     def extract_dofs_boundary(V, facets, bsubd):
         # Use a constant vector of ones whose length depends on the problem dimension
         bc_val = Constant((1, 1)) if problem_dim == 2 else Constant((1, 1, 1))
