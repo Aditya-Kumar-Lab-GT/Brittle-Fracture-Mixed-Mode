@@ -171,7 +171,7 @@ Once the conversion is complete, run this FEniCS code to perform the
 simulation.
 ===========================================================================
 """
-if problem_type in (1, 2, 3, 5, 6):
+if problem_type in (1, 3, 5, 6):
     # -----------------------------------------------------
     # Mesh Loading
     # -----------------------------------------------------
@@ -216,8 +216,27 @@ if problem_type in (1, 2, 3, 5, 6):
 
 # ___________________________________________________________________________________________________________________________________________________________
 
+if mesh_choice == 2:                                  # Mode I / Uniaxial Tension
+	# Create mesh
+	mesh=RectangleMesh(comm, Point(0.0,0.0), Point(W,L), int(W/(32*h)), int(L/(32*h)))
+	domain1 = CompiledSubDomain("x[1]<100*h", lch=lch, h=h)
+	ir=0
+	while ir<2:
+		d_markers = MeshFunction("bool", mesh, 2, False)
+		domain1.mark(d_markers, True)
+		mesh = refine(mesh,d_markers, True)
+		ir+=1
 
-if mesh_choice == 4:                                 # Mode III
+	domain2 = CompiledSubDomain("x[1]<4*eps && x[0]<a+eps*10 && x[0]>a-eps*4", a=ac, eps=eps, h=h)
+	ir=0
+	while ir<3:
+		d_markers = MeshFunction("bool", mesh, 2, False)
+		domain2.mark(d_markers, True)
+		mesh = refine(mesh,d_markers, True)
+		ir+=1          
+
+
+elif mesh_choice == 4:                                 # Mode III
     mesh = Mesh("crack.xml")
     domain2 = CompiledSubDomain("x[0]>12 && x[0]<19 && x[1]<(16) && x[1]>(9)")
     for _ in range(5):
@@ -264,7 +283,6 @@ elif mesh_choice == 8:                      # Axisymmetric Indentation
         mesh = refine(mesh, d_markers, True)
         ir += 1
 
-   
 
 dx = Measure("dx", domain=mesh)
 n = FacetNormal(mesh)
@@ -277,8 +295,17 @@ cracktip = CompiledSubDomain("abs(x[1]-0.0)<1e-4 && x[0]<ac+h && x[0]>ac-eps", a
 outer = CompiledSubDomain("x[1]>L/10", L=L)
 leftbot = CompiledSubDomain("abs(x[1]+side)<1e-4 && abs(x[0]+side)<1e-4", side=W)
 
+if markBC_choice == 2:                                # Mode_I
+	# Mark boundary subdomians
+	left =  CompiledSubDomain("near(x[0], side, tol) && on_boundary", side = 0.0, tol=1e-4)
+	front =  CompiledSubDomain("near(x[0], side, tol) && on_boundary", side = W, tol=1e-4)
+	top =  CompiledSubDomain("near(x[1], side, tol) && on_boundary", side = L, tol=1e-4)
+	bottom = CompiledSubDomain("x[1]<1e-4 && x[0]>a-1e-4", a=ac)
+	cracktip = CompiledSubDomain("x[1]<1e-4 && x[0]>a-eps*4 && x[0]<a+h ", a=ac, eps=eps, h=h)
+	righttop = CompiledSubDomain("abs(x[1]-L)<1e-4 && abs(x[0]-W)<1e-4 ", L=L, W=W)
+	outer= CompiledSubDomain("x[1]>L/10", L=L)
 
-if markBC_choice == 4:                                # Mode_III
+elif markBC_choice == 4:                                # Mode_III
     # Mark boundary subdomians
     left = CompiledSubDomain("x[0]<1e-4")
     right = CompiledSubDomain("x[0]>Lx-1e-4", Lx=W)
@@ -382,7 +409,7 @@ elif DirichletBC_choice == 2:   # Mode I
     # No displacement on u_y
     c = Expression("t*0.0", degree=1, t=0)
     bc_rt = DirichletBC(V.sub(0), Constant(0.0), righttop, method='pointwise')
-    bc_bot = DirichletBC(V.sub(1), c, facets, 22)
+    bc_bot = DirichletBC(V.sub(1), c, bottom)
     bcs = [bc_rt, bc_bot]
     
     cz = Constant(1.0)
@@ -397,6 +424,11 @@ elif DirichletBC_choice == 2:   # Mode I
     sigma_critical = sts if sigma_critical_crack > sts else sigma_critical_crack
     sigma_external = loadfactor * sigma_critical
     Tf = Expression(("t*0.0", "t*sigma"), degree=1, t=0, sigma=sigma_external)
+	# marking boundary on which Neumann bc is applied
+    boundary_subdomains = MeshFunction("size_t", mesh, 1)
+    boundary_subdomains.set_all(0)
+    top.mark(boundary_subdomains,1)	
+    ds = ds(subdomain_data=boundary_subdomains) 
 
 elif DirichletBC_choice == 3:   # Mode II
     c = Expression(("d_u * t", "t*0.0"), degree=1, t=0, d_u=disp)
@@ -572,7 +604,7 @@ assign(z_trial,z)
 # ---------------------------
 # Helper function: Extract DOFs on boundary
 # ---------------------------
-if problem_type in (1, 2, 3, 5, 6):
+if problem_type in (1, 3, 5, 6):
     def extract_dofs_boundary(V, facets, bsubd):
         # Use a constant vector of ones whose length depends on the problem dimension
         bc_val = Constant((1, 1)) if problem_dim == 2 else Constant((1, 1, 1))
@@ -618,7 +650,7 @@ if problem_type == 1:                                                  # Surfing
     y_dofs_top = top_dofs[1::d]
 
 elif problem_type == 2:                                                # Mode I
-    top_dofs = extract_dofs_boundary(V, facets, 21)
+    top_dofs = extract_dofs_boundary(V, top)
     y_dofs_top = top_dofs[1::d]
 
 elif problem_type == 3:                                                # Mode II
@@ -626,7 +658,7 @@ elif problem_type == 3:                                                # Mode II
     y_dofs_top = top_dofs[0::d]
 
 elif problem_type == 4:                                                # Mode III
-    top_dofs=extract_dofs_boundary(V,top)
+    top_dofs=extract_dofs_boundary(V, top)
     y_dofs_top = top_dofs[2::d]
 
 elif problem_type == 5:                                                # Biaxial
@@ -876,7 +908,7 @@ if phase_model == 1:
         Pi = psi1*dx
 
     if problem_type == 2:
-        Pi = psi1*dx - dot(Tf, u)*ds(21)
+        Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
         Pi = psi1*dx - dot(Tf*n, u)*ds(24)
@@ -1016,7 +1048,7 @@ elif phase_model == 2:
         Pi = psi1*dx
 
     if problem_type == 2:
-        Pi = psi1*dx - dot(Tf, u)*ds(21)
+        Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
         Pi = psi1*dx - dot(Tf*n, u)*ds(24)
@@ -1138,7 +1170,7 @@ elif phase_model == 3:
         Pi = psi1*dx
 
     if problem_type == 2:
-        Pi = psi1*dx - dot(Tf, u)*ds(21)
+        Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
         Pi = psi1*dx - dot(Tf*n, u)*ds(24)
@@ -1212,7 +1244,7 @@ elif phase_model == 4:
         Pi = psi1*dx
 
     if problem_type == 2:
-        Pi = psi1*dx - dot(Tf, u)*ds(21)
+        Pi = psi1*dx - dot(Tf, u)*ds(1)
 
     elif problem_type == 5:
         Pi = psi1*dx - dot(Tf*n, u)*ds(24)
