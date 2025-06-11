@@ -515,12 +515,6 @@ elif DirichletBC_choice == 6:   # Pure Shear
     sigma_external = 1.1 * sqrt(E * Gc / np.pi / ac)
     Tf = Expression("t*sigma", degree=1, t=0, sigma=sigma_external)
 
-    # marking boundary on which Neumann bc is applied
-    boundary_subdomains = MeshFunction("size_t", mesh, 1)
-    boundary_subdomains.set_all(0)	
-    right.mark(boundary_subdomains,1)	
-    ds = ds(subdomain_data=boundary_subdomains) 
-
 elif DirichletBC_choice == 7:   # 4-P Bending
     cr = Expression(("t*0.0", "t*0.0", "t*0.0"), degree=1, t=0)
     crr = Expression("t*0.0", degree=1, t=0)
