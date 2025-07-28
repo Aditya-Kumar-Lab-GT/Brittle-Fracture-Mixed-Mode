@@ -9,6 +9,9 @@ import time
 import sys
 import csv
 from datetime import datetime
+from dolfin import assemble, inner, grad, Point, MPI
+import numpy as np
+from pathlib import Path
 
 #  Determine the start time for the analysis
 startTime = datetime.now()
@@ -57,7 +60,7 @@ stag_iter_max    = int(sys.argv[14])
 linear_solver_for_u      = int(sys.argv[15])
 non_linear_solver_choice = int(sys.argv[16])
 paraview_at_step         = int(sys.argv[17])
-disp                     = float(sys.argv[18])
+v0_imp                   = float(sys.argv[18])
 problem_dim              = int(sys.argv[19])
 
 #------------------------------------------------
@@ -171,7 +174,7 @@ Once the conversion is complete, run this FEniCS code to perform the
 simulation.
 ===========================================================================
 """
-if problem_type in (1, 3, 6):
+if problem_type in (1, 3, 6, 9, 10):
     # -----------------------------------------------------
     # Mesh Loading
     # -----------------------------------------------------
@@ -284,6 +287,19 @@ elif mesh_choice == 8:                      # Axisymmetric Indentation
         ir += 1
 
 
+elif mesh_choice == 11:                                 # 3D Cylinder|| Compression Test
+    mesh = Mesh("crack.xml")
+
+    domain2 = CompiledSubDomain("x[1]>=0")   # CompiledSubDomain("true")
+
+    for _ in range(4):
+        d_markers = MeshFunction("bool", mesh, 2, False)
+        domain2.mark(d_markers, True)
+        mesh = refine(mesh, d_markers, True)
+
+
+
+
 dx = Measure("dx", domain=mesh)
 n = FacetNormal(mesh)
 m = as_vector([n[1], -n[0]])
@@ -357,7 +373,12 @@ elif markBC_choice == 8:  # Axisymmetric Indentation
     def loadsetz(x):
 	    return x[0]>0-1e-4 and x[0]<-0.55+1e-4 #and abs(x[1]-0)<1e-4
 
-   
+
+elif markBC_choice == 11:                                # 3D Cylinder|| Compression Test
+    # Mark boundary subdomians   
+    top = CompiledSubDomain("on_boundary && near(x[1], L, tol)", L=L, tol=1e-4)
+    bottom = CompiledSubDomain("on_boundary && near(x[1], 0.0, tol)", tol=1e-4)
+    rightbot = CompiledSubDomain("abs(x[0]-W/2)<1e-4 && abs(x[1]-0)<1e-4 && abs(x[2]-0)<1e-4", W=W, L=L)
 
 # ___________________________________________________________________________________________________________________________________________________________
 
@@ -440,7 +461,7 @@ elif DirichletBC_choice == 2:   # Mode I
     ds = ds(subdomain_data=boundary_subdomains) 
 
 elif DirichletBC_choice == 3:   # Mode II
-    c = Expression(("d_u * t", "t*0.0"), degree=1, t=0, d_u=disp)
+    c = Expression(("v0_imp * t", "t*0.0"), degree=1, t=0, v0_imp=v0_imp)
     bc_bot = DirichletBC(V, Constant((0.0, 0.0)), facets, 22)
     bc_top = DirichletBC(V, c, facets, 21)
     bcs = [bc_bot, bc_top]
@@ -453,8 +474,8 @@ elif DirichletBC_choice == 3:   # Mode II
     bcs_z = []
 
 elif DirichletBC_choice == 4:   # Mode III
-    r = Expression("t*disp",degree=1,t=0,disp=disp)
-    r0 = Expression("(t-tau)*disp",degree=1,t=0,tau=0, disp=disp)
+    r = Expression("t*v0_imp",degree=1,t=0,v0_imp=v0_imp)
+    r0 = Expression("(t-tau)*v0_imp",degree=1,t=0,tau=0, v0_imp=v0_imp)
 
     # Define Dirichlet boundary conditions
     c=Expression("0.0",degree=1,t=0)
@@ -518,7 +539,7 @@ elif DirichletBC_choice == 6:   # Pure Shear
 elif DirichletBC_choice == 7:   # 4-P Bending
     cr = Expression(("t*0.0", "t*0.0", "t*0.0"), degree=1, t=0)
     crr = Expression("t*0.0", degree=1, t=0)
-    cl = Expression("-du*t", degree=1, t=0, du=disp)
+    cl = Expression("-v0_imp*t", degree=1, t=0, v0_imp=v0_imp)
     
     bcrl = DirichletBC(V, cr, Rleft)             # Left Reaction Restraint
     bcrry = DirichletBC(V.sub(1), crr, Rright)   # Right Reaction Restraint
@@ -526,7 +547,14 @@ elif DirichletBC_choice == 7:   # 4-P Bending
     bcll = DirichletBC(V.sub(1), cl, Pleft)      # Left Loading Point
     bclr = DirichletBC(V.sub(1), cl, Pright)     # Right Loading Point
     bcs = [bcrl, bcrry, bcrrz, bcll, bclr]
-    
+
+    bcrl0 = DirichletBC(V, cr, Rleft)             # Left Reaction Restraint
+    bcrry0 = DirichletBC(V.sub(1), Constant(0.0), Rright)   # Right Reaction Restraint
+    bcrrz0 = DirichletBC(V.sub(2), Constant(0.0), Rright)   # Right Reaction Restraint
+    bcll0 = DirichletBC(V.sub(1), Constant(0.0), Pleft)      # Left Loading Point
+    bclr0 = DirichletBC(V.sub(1), Constant(0.0), Pright)     # Right Loading Point
+    bcs_du = [bcrl0, bcrry0, bcrrz0, bcll0, bclr0]
+
     cz = Constant(1.0)
     bct_z = DirichletBC(Y, cz, outer)
     cz2 = Constant(0.0)
@@ -559,9 +587,92 @@ elif DirichletBC_choice == 8: # Axisymmetric Indentation
     bct_dz2 = DirichletBC(Y, d_dz, loadsetz)
     bcs_dz=[bct_dz, bct_dz2]
 
+elif DirichletBC_choice == 9:   # Mode I, Displacement BCs
+    cp = Expression(("0 * t", "v0_imp * t"), degree=1, t=0, v0_imp=v0_imp)
+    cn = Expression(("0 * t", "v0_imp * t"), degree=1, t=0, v0_imp=-v0_imp)
+
+    bc_rt = DirichletBC(V.sub(0), Constant(0.0), righttop, method='pointwise')
+    bc_top = DirichletBC(V, cp, facets, 21)
+    bc_bot = DirichletBC(V, cn, facets, 22)
+    bcs = [bc_rt, bc_bot, bc_top]
     
+    cz = Constant(1.0)
+    bcb_z = DirichletBC(Y, cz, facets, 22)
+    bct_z = DirichletBC(Y, cz, facets, 21)
+    cz2 = Constant(0.0)
+    bct_z2 = DirichletBC(Y, cz2, cracktip)
+    bcs_z = []    
+
+elif DirichletBC_choice == 10:   # Compression Test, Section 3.5.4
+    test_type=1
+
+    if test_type==1: 
+        cn = Expression(("0 * t", "v0_imp * t"), degree=1, t=0, v0_imp=-v0_imp)
+
+        bc_top = DirichletBC(V, cn, facets, 21)
+        bc_bot = DirichletBC(V, Constant((0.0, 0.0)), facets, 22)
+        bcs = [bc_bot, bc_top]
+        
+        bc0_top = DirichletBC(V, Constant((0.0, 0.0)), facets, 21)
+        bc0_bot = DirichletBC(V, Constant((0.0, 0.0)), facets, 22)
+        bcs_du = [bc0_bot, bc0_top]
+
+    elif test_type == 3: 
+        cn = Expression("v0_imp * t", degree=1, t=0, v0_imp=-v0_imp)
+        
+        bc_rt = DirichletBC(V.sub(0), Constant(0.0), righttop, method='pointwise')
+        bc_top = DirichletBC(V.sub(1), cn, facets, 21)
+        bc_bot = DirichletBC(V.sub(1), Constant(0.0), facets, 22)
+        bcs = [bc_rt, bc_bot, bc_top]
+
+        bc0_top = DirichletBC(V.sub(1), Constant(0.0), facets, 21)
+        bc0_bot = DirichletBC(V.sub(1), Constant(0.0), facets, 22)
+        bcs_du = [bc_rt, bc0_bot, bc0_top]
 
 
+    cz = Constant(1.0)
+    bcb_z = DirichletBC(Y, cz, facets, 22)
+    bct_z = DirichletBC(Y, cz, facets, 21)
+    cz2 = Constant(0.0)
+    bct_z2 = DirichletBC(Y, cz2, cracktip)
+    bcs_z = []    
+
+elif DirichletBC_choice == 11:   # Compression Test, Section 3.5.4 # 3D Cylinder
+    test_type=1
+
+    if test_type==1: 
+        cn = Expression(("0 * t", "v0_imp * t", "0 * t"), degree=1, t=0, v0_imp=-v0_imp)
+        cn0 = Expression(("0 * (t-tau)", "v0_imp * (t-tau)", "0 * (t-tau)"), degree=1, t=0, tau=0.0, v0_imp=-v0_imp)
+
+        bc_top = DirichletBC(V, cn, top)
+        bc_bot = DirichletBC(V, Constant((0.0, 0.0, 0.0)), bottom)
+        bcs = [bc_bot, bc_top]
+
+        bc00_top = DirichletBC(V, cn0, top)
+        bc00_bot = DirichletBC(V, Constant((0.0, 0.0, 0.0)), bottom)
+        bcs_du0 = [bc00_bot, bc00_top]
+
+        bc0_top = DirichletBC(V, Constant((0.0, 0.0, 0.0)), top)
+        bc0_bot = DirichletBC(V, Constant((0.0, 0.0, 0.0)), bottom)
+        bcs_du = [bc0_bot, bc0_top]
+
+    elif test_type == 3: 
+        cn = Expression("v0_imp * t", degree=1, t=0, v0_imp=-v0_imp)
+        
+        bc_rb = DirichletBC(V.sub(0), Constant(0.0), rightbot, method='pointwise')
+        bc_top = DirichletBC(V.sub(1), cn, top)
+        bc_bot = DirichletBC(V.sub(1), Constant(0.0), bottom)
+        bcs = [bc_rb, bc_bot, bc_top]
+
+        bc0_top = DirichletBC(V.sub(1), Constant(0.0), top)
+        bc0_bot = DirichletBC(V.sub(1), Constant(0.0), bottom)
+        bcs_du = [bc_rb, bc0_bot, bc0_top]
+
+    cz = Constant(1.0)
+    bcb_z = DirichletBC(Y, cz, top)
+    bct_z = DirichletBC(Y, cz, bottom)
+    
+    bcs_z = []    
 # ___________________________________________________________________________________________________________________________________________________________
 
 
@@ -582,6 +693,10 @@ B  = Constant((0.0, 0.0))  # Body force per unit volume
 
 # Common initialization for displacement field (u) and phase field (z)
 # Set problem dimension: 2 for 2D, 3 for 3D
+
+if comm_rank == 0: 
+    print(" mesh topological dim:", mesh.topology().dim())
+    print(" mesh geometric  dim:", mesh.geometry().dim())
 
 
 # Set the dimension-specific constant for displacement initialization.
@@ -616,7 +731,7 @@ assign(z_trial,z)
 # ---------------------------
 # Helper function: Extract DOFs on boundary
 # ---------------------------
-if problem_type in (1, 3, 6):
+if problem_type in (1, 3, 6, 9, 10):
     def extract_dofs_boundary(V, facets, bsubd):
         # Use a constant vector of ones whose length depends on the problem dimension
         bc_val = Constant((1, 1)) if problem_dim == 2 else Constant((1, 1, 1))
@@ -655,6 +770,26 @@ def evaluate_function(u, x):
     return computed_u
 
 
+# ___________________________________________________________________________________________________________________________________________________________
+
+def local_project(v, V, u=None):
+    """Element-wise projection using LocalSolver"""
+    dv = TrialFunction(V)
+    v_ = TestFunction(V)
+    a_proj = inner(dv, v_)*dx
+    b_proj = inner(v, v_)*dx
+    solver = LocalSolver(a_proj, b_proj)
+    solver.factorize()
+    if u is None:
+        u = Function(V)
+        solver.solve_local_rhs(u)
+        return u
+    else:
+        solver.solve_local_rhs(u)
+        return
+    
+
+# ___________________________________________________________________________________________________________________________________________________________
 
 # Condition-specific code
 if problem_type == 1:                                                  # Surfing problem
@@ -698,7 +833,24 @@ elif problem_type == 8:
     top_dofs = extract_dofs_boundary(V, loadset)
     y_dofs_top = top_dofs[1::d]
 
-   
+elif problem_type == 9:                                                  # Mode I, Displacement BCs
+    top_dofs = extract_dofs_boundary(V, facets, 21)
+    bot_dofs = extract_dofs_boundary(V, facets, 22)
+    y_dofs_top = top_dofs[1::d]
+    y_dofs_bot = top_dofs[1::d]
+
+elif problem_type == 10:                                                  # Compression Test, Section 3.5.4
+    top_dofs = extract_dofs_boundary(V, facets, 21)
+    bot_dofs = extract_dofs_boundary(V, facets, 22)
+    y_dofs_top = top_dofs[1::d]
+    y_dofs_bot = top_dofs[1::d]
+
+elif problem_type == 11:                                                # Compression Test, Section 3.5.4 || 3D Cylinder
+    top_dofs = extract_dofs_boundary(V, top)
+    bot_dofs = extract_dofs_boundary(V, bottom)
+    y_dofs_top = top_dofs[1::d]  
+    y_dofs_bot = top_dofs[1::d]  
+
 # ___________________________________________________________________________________________________________________________________________________________
 
 
@@ -916,7 +1068,7 @@ if phase_model == 1:
     stress=(z**2+eta)*sigma(u)
     
     # Total potential energy
-    if problem_type == 1 or 3 or 4 or 7:
+    if problem_type in (1, 3, 4, 7, 9, 10, 11):
         Pi = psi1*dx
 
     if problem_type == 2:
@@ -993,7 +1145,7 @@ if phase_model == 1:
     #Balance of configurational forces PDE
     if stress_state_choice in [1,2,3]: #Plane stress, Plane strain, 3D
         Wv=pen/2*((abs(z)-z)**2 + (abs(1-z) - (1-z))**2 )*dx
-        Wv2=conditional(le(z, 0.05), 1, 0)*z_penalty_factor*pen/2*( 1/4*( abs(z_prev-z)-(z_prev-z) )**2 )*dx
+        Wv2=conditional(le(z, 0.25), 1, 0)*z_penalty_factor*pen/2*( 1/4*( abs(z_prev-z)-(z_prev-z) )**2 )*dx
         R_z = y*2*z*(psi11)*dx - y*(ce)*dx + 3*delta*Gc/8*(y*(-1)/eps + 2*eps*inner(grad(z),grad(y)))*dx + derivative(Wv,z,y) +  derivative(Wv2,z,y)   # Complete Model
     
     elif stress_state_choice == 4: #Axisymmetric
@@ -1344,7 +1496,7 @@ if linear_solver_for_u == 1:
 #time-stepping parameters
 
 if problem_type == 7: 
-    stepsize=5e-3/disp
+    stepsize=5e-3/v0_imp
     Totalsteps=int(1/stepsize)
     startstepsize=1/Totalsteps
     stepsize=startstepsize
@@ -1369,6 +1521,8 @@ nrcount = 0
 minstepsize = startstepsize/10000
 maxstepsize = startstepsize
 
+# Initial reference point (e.g., notch root)
+crack_length_prev = 0
 
 
 while t-stepsize < T:
@@ -1396,10 +1550,19 @@ while t-stepsize < T:
         cl.t=t; 
 
         if t>0.5:
-            stepsize = 5e-4 / disp
+            stepsize = 5e-4 / v0_imp
 
     elif problem_type == 8:                                                          # Axisymmetric Indentation
         Tf.t=t; c.t=t; r.t=t; r0.t=t; r0.tau=tau
+
+    elif problem_type == 9:                                                          # Mode I, Displacement BCs
+        cp.t=t; cn.t=t
+
+    elif problem_type == 10:                                                       # Compression Test, Section 3.5.4
+        cn.t=t
+
+    elif problem_type == 11:                                                   # Compression Test, Section 3.5.4
+        cn.t=t; cn0.t=t; cn0.tau=tau
 
     stag_iter=1
     rnorm_stag=1
@@ -1408,7 +1571,7 @@ while t-stepsize < T:
     stag_flag = 0
 
 
-    while stag_iter<stag_iter_max and zdiffnorm > 1e-12:                
+    while stag_iter<stag_iter_max and zdiffnorm > 1e-10:                
         start_time=time.time()
         ##############################################################
         #First PDE
@@ -1481,23 +1644,24 @@ while t-stepsize < T:
         ###############################################################
         b=assemble(-R, tensor=b)
         fint=b.copy() #assign(fint,b) 
-        for bc in bcs:
+        for bc in bcs_du:
             bc.apply(b)
         rnorm_stag=b.norm('l2')	
-        if comm_rank==0:
-            print('Stag Iteration no= %d' %stag_iter,  'Residual_u= %e' %rnorm_stag)
 
         zdiffnorm = norm(z.vector() - z_trial.vector())
+        
         if comm_rank==0:
-            print('Stag Iteration no= %d' %stag_iter,  'Residual_z= %e' %zdiffnorm)
+            print(f"Stag Iteration no={stag_iter}   Residual_u={rnorm_stag}   zdiffnorm={zdiffnorm}")
 
         stag_iter+=1 
 
-        if zdiffnorm > 1e2:
+        if zdiffnorm > 1e6:
             terminate = 1
             break
     
-                
+    if comm_rank==0:
+            print(f"___________________________________________________________________")
+
     ######################################################################
     #Post-Processing
     ######################################################################
@@ -1507,6 +1671,20 @@ while t-stepsize < T:
     else:
         assign(u_prev, u)
         assign(z_prev, z)
+
+
+    # ———————————————————————————————————————————————————————————————————————————————————————————————————————
+    # # ——— compute and report determinant of deformation gradient ———
+    # # deformation gradient F = I + ∇u, then detF = det(F)
+    # F_expr   = Identity(d) + grad(u)
+    # detF_expr = det(F_expr)
+
+    # total_detF = assemble(detF_expr*dx)
+    # total_vol  = assemble(Constant(1.0)*dx)
+    # avg_detF   = total_detF/total_vol
+    # if comm_rank == 0:
+    #     print(f"[Step= {step:3d}, t= {t:.4f}]  ⟨det F⟩ = {avg_detF:.6f}")
+    # ———————————————————————————————————————————————————————————————————————————————————————————————————————
 
 
     # If maximum stag iterations reached, flag stag_flag and exit time stepping
@@ -1527,7 +1705,7 @@ while t-stepsize < T:
 
     def write_to_file(filename, data, mode='a'):
         with open(filename, mode) as rfile:
-            rfile.write("{} {}\n".format(*data))
+            rfile.write("{} {} {}\n".format(*data))
 
     def save_xdmf(ac, step, u, z, t):
         file_results = XDMFFile("Paraview_ac=" + str(ac) + "/SENT_" + str(step) + ".xdmf")
@@ -1537,6 +1715,17 @@ while t-stepsize < T:
         z.rename("z", "phase field")
         file_results.write(u, t)
         file_results.write(z, t)
+
+        # now project det(F) to a CG1 nodal space and write it
+        # V_det  = FunctionSpace(mesh, "CG", 1)
+        V_det = FunctionSpace(mesh, "DG", 0)
+        detF_e = det(Identity(d) + grad(u))
+        detF   = local_project(detF_e, V_det)
+        detF.rename("detF", "det F")
+        file_results.write(detF, t)
+
+        file_results.close()
+
 
     # Post-processing based on problem_type
     if problem_type == 1:                                                                      # Surfing problem
@@ -1594,7 +1783,7 @@ while t-stepsize < T:
         Fx = calculate_reaction(fint, y_dofs_top)
 
         if comm_rank == 0:
-            printdata = [t, t * disp, Fx]
+            printdata = [t, t * v0_imp, Fx]
             with open('Results.csv', 'a', newline='') as csvfile:
                 csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
                 csvwriter.writerow(printdata)
@@ -1677,8 +1866,98 @@ while t-stepsize < T:
             file_results.write(u, t)
             file_results.write(z, t)
 
+    elif problem_type == 9:                                                                    # Mode I, Displacement BCs
+        Fy_top = calculate_reaction(fint, y_dofs_top)
+        Fy_bot = calculate_reaction(fint, y_dofs_bot)
+        z_x = evaluate_z_at_point(z, (ac + eps, 0.0))
+
+        traction = dot(sigma(u), n)
+        traction_top_y = assemble(traction[1]*ds(21))
+        traction_bot_y = assemble(traction[1]*ds(22))
+
+        if comm_rank == 0:
+            write_to_file('Alumina_SENT_AT2.txt', [t, zmin, z_x])
+            write_to_file('F_int.txt', [t, Fy_top, Fy_bot])
+            write_to_file('F_sig_dot_n.txt', [t, traction_top_y, traction_bot_y])
+
+        if step % paraview_at_step == 0:
+            save_xdmf(ac, step, u, z, t)
+
+    elif problem_type == 10:                                                                   # Compression Test, Section 3.5.4
+        Fy_top = calculate_reaction(fint, y_dofs_top)
+        Fy_bot = calculate_reaction(fint, y_dofs_bot)
+
+        traction = dot(sigma(u), n)
+        traction_top_y = assemble(traction[1]*ds(21))
+        traction_bot_y = assemble(traction[1]*ds(22))
+
+        if comm_rank == 0:
+            write_to_file('F_int.txt', [t, Fy_top, Fy_bot])
+            write_to_file('F_sig_dot_n.txt', [t, traction_top_y, traction_bot_y])
+
+        if step % paraview_at_step == 0:
+            save_xdmf(ac, step, u, z, t)
+
+
+    elif problem_type == 11:                                                                   # Compression Test, Section 3.5.4
+        Fy_top = calculate_reaction(fint, y_dofs_top)
+        Fy_bot = calculate_reaction(fint, y_dofs_bot)
+
+        if comm_rank == 0:
+            write_to_file('F_int.txt', [t, Fy_top, Fy_bot])
+        
+        # only save in the time window 0.30 < t < 0.34
+        if 0.30 < t < 0.34:
+            # first condition: every step
+            if step % 1 == 0:
+                save_xdmf(ac, step, u, z, t)
+            # second condition: every paraview_at_step
+        elif step % paraview_at_step == 0:
+            save_xdmf(ac, step, u, z, t)
+
     # ___________________________________________________________________________________________________________________________________________________________
 
+    # ——————————————————————————————————————————————————————————————————————————————————————————————————
+    # # --- Crack length and velocity calculation ---
+    # # 1) Crack‐length indicator integral
+    # integrand = (3.0/8.0)*((1.0 - z)/eps + eps*inner(grad(z), grad(z)))*dx
+    # local_length = assemble(integrand)
+    # # sum over subdomains/processes
+    # crack_length = mesh.mpi_comm().allreduce(local_length, op=MPI.SUM)
+
+    # # 2) Crack‐tip location via damaged DOFs
+    # # Reference point for distance measurement
+    # ref_pt = np.array([10.0, 0.0])  # change as needed
+
+    # # Get global DOF coordinates and local z‐values
+    # dof_coords = Y.tabulate_dof_coordinates().reshape((-1, mesh.geometry().dim()))
+    # z_vals     = z.vector().get_local()
+
+    # # Mask DOFs where z ≤ 0.01 (damaged)
+    # idx = np.where(z_vals <= 0.01)[0]
+    # if idx.size > 0:
+    #     pts = dof_coords[idx]
+    #     dists = np.linalg.norm(pts - ref_pt, axis=1)
+    #     local_tip = dists.max()
+    # else:
+    #     local_tip = 0.0
+
+    # # global maximum tip distance across MPI ranks
+    # crack_tip = MPI.max(mesh.mpi_comm(), local_tip)
+
+    # # 3) Velocity
+    # if step == 1:
+    #     crack_velocity = crack_tip / t
+    # else:
+    #     dt = stepsize
+    #     crack_velocity = (crack_tip - crack_length_prev) / dt if dt > 0.0 else 0.0
+
+    # crack_length_prev = crack_tip
+
+    # # 4) Log to file from rank 0
+    # if comm_rank == 0:
+    #     write_to_file('CrackVelocity.txt', [t, crack_tip, crack_velocity])
+    # ——————————————————————————————————————————————————————————————————————————————————————————————————
     
     # Time-stepping update (combined)
     ######################################################################
@@ -1697,21 +1976,26 @@ while t-stepsize < T:
             step += 1
             if t + stepsize <= T:
                 samesizecount += 1
+                tau = t
                 t += stepsize
             else:
                 samesizecount = 1
                 stepsize = T - t
+                tau = t
                 t += stepsize
         else:
             step += 1
             if stepsize * 2 <= maxstepsize and t + stepsize * 2 <= T:
                 stepsize *= 2
+                tau = t
                 t += stepsize
             elif stepsize * 2 > maxstepsize and t + maxstepsize <= T:
                 stepsize = maxstepsize
+                tau = t
                 t += stepsize
             else:
                 stepsize = T - t
+                tau = t
                 t += stepsize
             samesizecount = 1
 
