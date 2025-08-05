@@ -25,7 +25,8 @@ For all other problem examples, the code requires .xml file: Generate .xml using
 | 5  | Biaxial tension                            |                     
 | 6  | Pure shear                                 |                     
 | 7  | 4-point bending beam  (30° / 45° notch)    |                     
-| 8  | Axisymmetric indentation                   |                     
+| 8  | Axisymmetric indentation                   |
+| 9  | Wing crack nucleation                      |
 
 4. Stress-State Options
 Choose any constitutive kinematics:
