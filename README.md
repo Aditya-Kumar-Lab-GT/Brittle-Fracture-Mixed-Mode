@@ -1,12 +1,13 @@
-Unified FEniCS Phase-Field Fracture Framework for Brittle Materials. Data for the paper "A comparison of phase field models of brittle fracture incorporating strength: I—Mixed-mode loading" is available here.
+The codes, finite element meshes, and data for the paper "A comparison of phase field models of brittle fracture incorporating strength: I—Mixed-mode loading" published in Engineering Fracture Mechanics, [2025], are available in this repository.
+
 
 
 1. Input Parameters ( sys.argv[] ):
-All 36 command-line arguments can be supplied in either of two ways :
+All command-line arguments can be supplied in either of two ways :
 
-a. SBATCH script (recommended): Develop a unified.sbatch as your own job script
+a. SBATCH script (recommended): Develop a [Filename].sbatch as your own job script
 
-b. Directly in UnifiedCode.py : Hard-code default values near the top
+b. Directly in UnifiedCode.py : Default values near the top
 
 2. Mesh Requirements: (For reference use the available example files in the folder)
    
@@ -41,13 +42,13 @@ All three paths are implemented consistently in both elasticity and fracture dri
 
 5. Phase-Field Formulations:
 
-a. Nucleation model with Drucker–Prager (DP) and Mohr–Coulomb (MC) strength surfaces. Each with three independent calibration tracks.
+a. Complete Nucleation model with Drucker–Prager (DP) and Mohr–Coulomb (MC) strength surfaces. Each with three independent calibration tracks.
 
 b. PF-CZM (phase-field cohesive zone model)
 
 c. Classic variational models with volumetric–deviatoric split, star-convex, and spectral split
 
-d. Miehe et al. (2015) – stress-driven
+d. Miehe et al. (2015) – stress-driven phase field model
 
 6. Solvers: 
 Native MPI + PETSc (linear solvers and different types of non-linear solvers are incorporated in the code).
@@ -57,7 +58,7 @@ Automatic J-integral, reaction forces, critical stress.
 Ready-to-plot XDMF for ParaView.
 
 8. Citing This Work:
-@article{Khayaz2025,   title={A comparison of phase field models of brittle fracture incorporating strength: I—Mixed-mode loading}}
+@article{Khayaz et al. 2025,   title={A comparison of phase field models of brittle fracture incorporating strength: I—Mixed-mode loading}}
 
 
 
