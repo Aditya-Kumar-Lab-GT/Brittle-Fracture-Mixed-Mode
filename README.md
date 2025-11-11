@@ -1,4 +1,4 @@
-The codes, finite element meshes, and data for the paper "A comparison of phase field models of brittle fracture incorporating strength, I: Mixed-mode loading" published in Engineering Fracture Mechanics, [330, 111679, 2025], are available in this repository.
+The codes, finite element meshes, and data for the paper "A comparison of phase field models of brittle fracture incorporating strength, I: Mixed-mode loading" published in Engineering Fracture Mechanics, 330, 111679 (2025), are available in this repository.
 
 
 1. Input Parameters ( sys.argv[] ):
